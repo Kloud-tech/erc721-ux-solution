@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { ethers } from 'ethers'
 import { useNavigate } from 'react-router-dom'
-
-const SEPOLIA_CHAIN_ID = 11155111
+import { SEPOLIA_CHAIN_ID, getReadProvider } from '../utils/providers.js'
 
 function formatChainId(id) {
   if (!id) return '—'
@@ -26,12 +25,13 @@ function ChainInfo() {
       return
     }
 
-    const provider = new ethers.providers.Web3Provider(window.ethereum, 'any')
+    const walletProvider = new ethers.providers.Web3Provider(window.ethereum, 'any')
+    const readProvider = getReadProvider()
 
     const ensureSepolia = async (chainIdOverride) => {
       const network = chainIdOverride
         ? { chainId: chainIdOverride }
-        : await provider.getNetwork()
+        : await walletProvider.getNetwork()
       const resolvedId = Number(network.chainId)
 
       if (resolvedId !== SEPOLIA_CHAIN_ID) {
@@ -43,27 +43,25 @@ function ChainInfo() {
       return resolvedId
     }
 
-    const handleBlock = (nextBlock) => {
-      setBlockNumber(nextBlock)
-    }
+    const handleBlock = (nextBlock) => setBlockNumber(nextBlock)
 
     const connectAndLoad = async (chainIdOverride) => {
       setLoading(true)
       setError('')
 
       try {
-        const accounts = await provider.send('eth_requestAccounts', [])
+        const accounts = await walletProvider.send('eth_requestAccounts', [])
         const validChain = await ensureSepolia(chainIdOverride)
         if (!validChain) return
 
-        const signer = provider.getSigner()
+        const signer = walletProvider.getSigner()
         const userAddress = accounts[0] || (await signer.getAddress())
 
         setAddress(userAddress)
-        setBlockNumber(await provider.getBlockNumber())
+        setBlockNumber(await readProvider.getBlockNumber())
 
-        provider.off('block', handleBlock)
-        provider.on('block', handleBlock)
+        readProvider.off('block', handleBlock)
+        readProvider.on('block', handleBlock)
       } catch (err) {
         setError(err?.message || 'Failed to connect to MetaMask.')
       } finally {
@@ -94,7 +92,7 @@ function ChainInfo() {
     return () => {
       window.ethereum?.removeListener('chainChanged', handleChainChanged)
       window.ethereum?.removeListener('accountsChanged', handleAccountsChanged)
-      provider.off('block', handleBlock)
+      readProvider.off('block', handleBlock)
     }
   }, [navigate])
 

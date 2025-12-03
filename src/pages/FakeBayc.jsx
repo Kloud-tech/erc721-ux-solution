@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ethers } from 'ethers'
+import { SEPOLIA_CHAIN_ID, getReadProvider } from '../utils/providers.js'
 
-const SEPOLIA_CHAIN_ID = 11155111
 const FAKE_BAYC_ADDRESS = '0x1dA89342716B14602664626CD3482b47D5C2005E'
 const fakeBaycAbi = [
   'function name() view returns (string)',
@@ -48,11 +48,13 @@ function FakeBayc() {
         }
 
         const signer = provider.getSigner()
+        const readProvider = getReadProvider()
         contractRef.current = new ethers.Contract(FAKE_BAYC_ADDRESS, fakeBaycAbi, signer)
+        const readContract = new ethers.Contract(FAKE_BAYC_ADDRESS, fakeBaycAbi, readProvider)
         const userAddress = accounts[0] || (await signer.getAddress())
         const [contractName, supply] = await Promise.all([
-          contractRef.current.name(),
-          contractRef.current.totalSupply(),
+          readContract.name(),
+          readContract.totalSupply(),
         ])
 
         setName(contractName)

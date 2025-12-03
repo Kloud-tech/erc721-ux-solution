@@ -5,6 +5,8 @@ import Home from './pages/Home.jsx'
 import NotFound from './pages/NotFound.jsx'
 import FakeBayc from './pages/FakeBayc.jsx'
 import FakeBaycToken from './pages/FakeBaycToken.jsx'
+import FakeNefturians from './pages/FakeNefturians.jsx'
+import FakeNefturiansWallet from './pages/FakeNefturiansWallet.jsx'
 import './App.css'
 
 function App() {
@@ -22,6 +24,9 @@ function App() {
           <NavLink to="/fakeBayc" className="nav-link">
             Fake BAYC
           </NavLink>
+          <NavLink to="/fakeNefturians" className="nav-link">
+            Fake Nefturians
+          </NavLink>
         </nav>
       </header>
 
@@ -31,6 +36,8 @@ function App() {
           <Route path="/chain-info" element={<ChainInfo />} />
           <Route path="/fakeBayc" element={<FakeBayc />} />
           <Route path="/fakeBayc/:tokenId" element={<FakeBaycToken />} />
+          <Route path="/fakeNefturians" element={<FakeNefturians />} />
+          <Route path="/fakeNefturians/:userAddress" element={<FakeNefturiansWallet />} />
           <Route path="/wrong-network" element={<NetworkError />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
