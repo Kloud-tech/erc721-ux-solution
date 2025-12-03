@@ -6,6 +6,7 @@ import { toHttp } from '../utils/ipfs.js'
 
 const FAKE_MEEBITS_ADDRESS = '0xD1d148Be044AEB4948B48A03BeA2874871a26003'
 const FAKE_MEEBITS_CLAIMER = '0x5341e225Ab4D29B838a813E380c28b0eFD6FBa55'
+const SIGNATURES_URL = '/claimer-signatures.json'
 
 const meebitsAbi = [
   'function name() view returns (string)',
@@ -25,6 +26,8 @@ function FakeMeebits() {
   const providerRef = useRef(null)
   const claimerRef = useRef(null)
   const meebitsReadRef = useRef(null)
+  const signaturesCacheRef = useRef(null)
+  const maxTokenRef = useRef(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [address, setAddress] = useState('')
@@ -38,6 +41,8 @@ function FakeMeebits() {
   const [txStatus, setTxStatus] = useState('idle')
   const [txHash, setTxHash] = useState('')
   const [whitelisted, setWhitelisted] = useState(null)
+  const [sigLoading, setSigLoading] = useState(false)
+  const [availableIds, setAvailableIds] = useState([])
 
   const parsedTokenId = useMemo(() => {
     const n = Number(tokenId)
@@ -85,8 +90,12 @@ function FakeMeebits() {
         setAddress(userAddress)
         setName(collectionName)
         setSymbol(collectionSymbol)
-        setTotalSupply(Number(supply))
+        const supplyNum = Number(supply)
+        setTotalSupply(supplyNum)
         setWhitelisted(Boolean(isWhite))
+        // Preload signatures to build dropdown.
+        await ensureSignatureCache()
+        populateAvailableIds(supplyNum)
       } catch (err) {
         setError(err?.message || 'Connexion MetaMask impossible.')
       } finally {
@@ -147,6 +156,66 @@ function FakeMeebits() {
     }
   }
 
+  const ensureSignatureCache = async () => {
+    if (signaturesCacheRef.current) return signaturesCacheRef.current
+    setSigLoading(true)
+    try {
+      const resp = await fetch(SIGNATURES_URL)
+      if (!resp.ok) throw new Error('Impossible de charger les signatures.')
+      const json = await resp.json()
+      const map = new Map()
+      let maxToken = 0
+      json.forEach((entry) => {
+        const id = Number(entry.tokenNumber)
+        map.set(id, entry.signature)
+        if (id > maxToken) maxToken = id
+      })
+      signaturesCacheRef.current = map
+      maxTokenRef.current = maxToken
+      return map
+    } finally {
+      setSigLoading(false)
+    }
+  }
+
+  const populateAvailableIds = (supply) => {
+    const maxToken = maxTokenRef.current
+    if (supply === null || maxToken === null || supply > maxToken) {
+      setAvailableIds([])
+      return
+    }
+    const ids = []
+    for (let i = supply; i <= maxToken; i++) {
+      ids.push(i)
+    }
+    setAvailableIds(ids)
+  }
+
+  const loadSignatureFromBundle = async () => {
+    if (parsedTokenId === null) {
+      setError('Choisis un token ID valide.')
+      return null
+    }
+
+    try {
+      setSigLoading(true)
+      setError('')
+      const map = (await ensureSignatureCache()) || new Map()
+      const sig = map.get(parsedTokenId)
+      if (!sig) {
+        setError("Aucune signature trouvée pour ce token dans l'outil embarqué.")
+        return null
+      }
+      setSignature(sig)
+      return sig
+    } catch (err) {
+      setError(err?.message || 'Chargement de la signature impossible.')
+      return null
+    } finally {
+      setSigLoading(false)
+    }
+  }
+
   const handleClaim = async () => {
     if (!claimerRef.current) {
       setError('Contrat non initialisé. Reconnecte MetaMask.')
@@ -156,16 +225,17 @@ function FakeMeebits() {
       setError('Choisis un token ID valide.')
       return
     }
-    if (!signature?.trim()) {
-      setError('Colle la signature (hex) depuis claimerV1-tools.')
-      return
+    let sig = signature?.trim()
+    if (!sig) {
+      sig = await loadSignatureFromBundle()
+      if (!sig) return
     }
 
     setError('')
     setTxStatus('pending')
     setTxHash('')
 
-    const sig = signature.startsWith('0x') ? signature : `0x${signature}`
+    sig = sig.startsWith('0x') ? sig : `0x${sig}`
 
     try {
       const readProvider = getReadProvider()
@@ -184,7 +254,11 @@ function FakeMeebits() {
       const meebitsRead = meebitsReadRef.current
       if (meebitsRead) {
         const supply = await meebitsRead.totalSupply().catch(() => null)
-        if (supply) setTotalSupply(Number(supply))
+        if (supply) {
+          const supplyNum = Number(supply)
+          setTotalSupply(supplyNum)
+          populateAvailableIds(supplyNum)
+        }
       }
     } catch (err) {
       const message = err?.reason || err?.message || 'Claim impossible.'
@@ -240,6 +314,21 @@ function FakeMeebits() {
       <div className="panel callout">
         <div className="form-grid">
           <label className="form-field">
+            <span className="eyebrow">Token dispo</span>
+            <select
+              value={parsedTokenId ?? ''}
+              onChange={(e) => setTokenId(e.target.value)}
+              disabled={availableIds.length === 0}
+            >
+              <option value="">Sélectionner un token</option>
+              {availableIds.map((id) => (
+                <option key={id} value={id}>
+                  Token #{id}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="form-field">
             <span className="eyebrow">Token ID</span>
             <input
               type="number"
@@ -262,6 +351,9 @@ function FakeMeebits() {
         <div className="button-row">
           <button className="ghost-button" onClick={checkAvailability} disabled={loading}>
             Vérifier la disponibilité
+          </button>
+          <button className="ghost-button" onClick={loadSignatureFromBundle} disabled={sigLoading || parsedTokenId === null}>
+            {sigLoading ? 'Chargement…' : 'Auto-remplir signature'}
           </button>
           <button className="primary-button" onClick={handleClaim} disabled={txStatus === 'pending'}>
             {txStatus === 'pending' ? 'Claiming…' : 'Claim token'}
